@@ -1,85 +1,46 @@
 Call = require './Call'
 shims = require './shims'
-ProtoSock = require 'protosock'
+Vein = require 'vein'
+recorder = require 'recorder'
+Emitter = require 'emitter'
 
-client =
-  options:
-    namespace: 'holla'
-    resource: 'default'
-    debug: false
+class Client extends Emitter
+  constructor: (@options={}) ->
+    @options.namespace ?= "holla"
+    @options.debug ?= false
+    @options.presence ?= true
+    @vein = Vein.createClient @options
+    @vein.ready (services) =>
+      console.log services
+
+    @vein.on "invalid", (socket, msg) =>
+      @handleMessage socket, msg
 
   register: (name, cb) ->
-    @ssocket.write
-      type: "register"
-      args:
-        name: name
-
-    @once "register", (worked) =>
-      if worked
-        @user = name
-        @emit "authorized"
-      @authorized = worked
-      cb? worked
+    @vein.ready =>
+      @vein.register name, (err) =>
+        return cb err if err?
+        @registered = true
+        @emit "registered"
+        cb()
 
   call: (user) -> new Call @, user, true
+
   chat: (user, msg) ->
-    @ssocket.write
-      type: "chat"
-      to: user
-      args:
-        message: msg
+    @vein.ready =>
+      @vein.chat user, msg
     return @
 
   ready: (fn) ->
-    if @authorized
+    if @registered
       fn()
     else
-      @once 'authorized', fn
+      @once 'registered', fn
     return @
 
-  validate: (socket, msg, done) ->
-    if @options.debug
-      console.log msg
-    return done false unless typeof msg is 'object'
-    return done false unless typeof msg.type is 'string'
-    if msg.type is "register"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.args.result is 'boolean'
-    else if msg.type is "offer"
-      return done false unless typeof msg.from is 'string'
-    else if msg.type is "answer"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.from is 'string'
-      return done false unless typeof msg.args.accepted is 'boolean'
-    else if msg.type is "sdp"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.from is 'string'
-      return done false unless msg.args.sdp
-      return done false unless msg.args.type
-    else if msg.type is "candidate"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.from is 'string'
-      return done false unless typeof msg.args.candidate is 'object'
-    else if msg.type is "chat"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.from is 'string'
-      return done false unless typeof msg.args.message is 'string'
-    else if msg.type is "hangup"
-      return done false unless typeof msg.from is 'string'
-    else if msg.type is "presence"
-      return done false unless typeof msg.args is 'object'
-      return done false unless typeof msg.args.name is 'string'
-      return done false unless typeof msg.args.online is 'boolean'
-    else
-      return done false
-    return done true
-
-  error: (socket, err) -> @emit 'error', err, socket
-  message: (socket, msg) ->
+  handleMessage: (socket, msg) ->
+    console.log msg if @options.debug
     switch msg.type
-      when "register"
-        @emit "register", msg.args.result
-
       when "offer"
         c = new Call @, msg.from, false
         @emit "call", c
@@ -108,9 +69,9 @@ client =
         @emit "sdp", {from: msg.from, sdp: msg.args.sdp, type: msg.args.type}
         @emit "sdp.#{msg.from}", msg.args
 
-
 holla =
-  createClient: ProtoSock.createClientWrapper client
+  createClient: (opt) -> new Client opt
+  Client: Client
   Call: Call
   supported: shims.supported
   config: shims.PeerConnConfig
@@ -119,7 +80,7 @@ holla =
     uri = holla.streamToBlob stream
     shims.attachStream uri, el
 
-  record: shims.recordVideo
+  record: recorder
   
   createStream: (opt, cb) ->
     return cb "Missing getUserMedia" unless shims.getUserMedia?

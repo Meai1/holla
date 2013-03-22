@@ -1,12 +1,5 @@
 ;(function(){
 
-
-/**
- * hasOwnProperty.
- */
-
-var has = Object.prototype.hasOwnProperty;
-
 /**
  * Require the given path.
  *
@@ -83,10 +76,10 @@ require.resolve = function(path) {
 
   for (var i = 0; i < paths.length; i++) {
     var path = paths[i];
-    if (has.call(require.modules, path)) return path;
+    if (require.modules.hasOwnProperty(path)) return path;
   }
 
-  if (has.call(require.aliases, index)) {
+  if (require.aliases.hasOwnProperty(index)) {
     return require.aliases[index];
   }
 };
@@ -140,7 +133,7 @@ require.register = function(path, definition) {
  */
 
 require.alias = function(from, to) {
-  if (!has.call(require.modules, from)) {
+  if (!require.modules.hasOwnProperty(from)) {
     throw new Error('Failed to alias "' + from + '", it does not exist');
   }
   require.aliases[to] = from;
@@ -202,7 +195,7 @@ require.relative = function(parent) {
    */
 
   localRequire.exists = function(path) {
-    return has.call(require.modules, localRequire.resolve(path));
+    return require.modules.hasOwnProperty(localRequire.resolve(path));
   };
 
   return localRequire;
@@ -251,7 +244,7 @@ var err = { type: 'error', data: 'parser error' }
  */
 
 exports.encodePacket = function (packet) {
-  var encoded = packets[packet.type];
+  var encoded = packets[packet.type]
 
   // data fragment is optional
   if (undefined !== packet.data) {
@@ -314,37 +307,37 @@ exports.encodePayload = function (packets) {
 /*
  * Decodes data when a payload is maybe expected.
  *
- * @param {String} data, callback method
- * @return {NaN} 
+ * @param {String} data
+ * @return {Array} packets
  * @api public
  */
 
-exports.decodePayload = function (data, callback) {
-  var packet;
+exports.decodePayload = function (data) {
   if (data == '') {
     // parser error - ignoring payload
-    return callback(err, 0, 1);
+    return [err];
   }
 
-  var length = ''
-    , n, msg;
+  var packets = []
+    , length = ''
+    , n, msg, packet
 
   for (var i = 0, l = data.length; i < l; i++) {
-    var chr = data.charAt(i);
+    var chr = data.charAt(i)
 
     if (':' != chr) {
       length += chr;
     } else {
       if ('' == length || (length != (n = Number(length)))) {
         // parser error - ignoring payload
-        return callback(err, 0, 1);
+        return [err];
       }
 
       msg = data.substr(i + 1, n);
 
       if (length != msg.length) {
         // parser error - ignoring payload
-        return callback(err, 0, 1);
+        return [err];
       }
 
       if (msg.length) {
@@ -352,23 +345,24 @@ exports.decodePayload = function (data, callback) {
 
         if (err.type == packet.type && err.data == packet.data) {
           // parser error in individual packet - ignoring payload
-          return callback(err, 0, 1);
+          return [err];
         }
 
-        callback(packet, i + n, l);
+        packets.push(packet);
       }
 
       // advance cursor
       i += n;
-      length = '';
+      length = ''
     }
   }
 
   if (length != '') {
     // parser error - ignoring payload
-    return callback(err, 0, 1);
+    return [err];
   }
 
+  return packets;
 };
 
 });
@@ -1716,32 +1710,25 @@ Polling.prototype.poll = function(){
  */
 
 Polling.prototype.onData = function(data){
-  var self = this;
   debug('polling got data %s', data);
   // decode payload
-  parser.decodePayload(data, function(packet, index, total) {self.onDataCallback(packet, index, total)});
-};
+  var packets = parser.decodePayload(data);
 
-/**
- * Callback function for payloads
- * 
- * @api private
- */
- 
-Polling.prototype.onDataCallback = function(packet, index, total){
-  // if its the first message we consider the transport open
-  if ('opening' == this.readyState) {
-    this.onOpen();
+  for (var i = 0, l = packets.length; i < l; i++) {
+    // if its the first message we consider the trnasport open
+    if ('opening' == this.readyState) {
+      this.onOpen();
+    }
+
+    // if its a close packet, we close the ongoing requests
+    if ('close' == packets[i].type) {
+      this.onClose();
+      return;
+    }
+
+    // otherwise bypass onData and handle the message
+    this.onPacket(packets[i]);
   }
-
-  // if its a close packet, we close the ongoing requests
-  if ('close' == packet.type) {
-    this.onClose();
-    return;
-  }
-
-  // otherwise bypass onData and handle the message
-  this.onPacket(packet);
 
   // if we got data we're not polling
   this.polling = false;
@@ -2299,11 +2286,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 
   function initIframe () {
     if (self.iframe) {
-      try {
-        self.form.removeChild(self.iframe);
-      } catch (e) {
-        self.onError('jsonp polling iframe removal error', e);
-      }
+      self.form.removeChild(self.iframe);
     }
 
     try {
@@ -3128,6 +3111,243 @@ require.register("wearefractal-protosock/dist/Client.js", function(exports, requ
 }).call(this);
 
 });
+require.register("wearefractal-vein/dist/main.js", function(exports, require, module){
+// Generated by CoffeeScript 1.4.0
+(function() {
+  var ProtoSock, client, server;
+
+  ProtoSock = require('protosock');
+
+  client = require('./Client');
+
+  module.exports = {
+    createClient: ProtoSock.createClientWrapper(client)
+  };
+
+  if (!(typeof window !== "undefined" && window !== null)) {
+    server = require('./Server');
+    module.exports.createServer = ProtoSock.createServerWrapper(server);
+  }
+
+}).call(this);
+
+});
+require.register("wearefractal-vein/dist/Client.js", function(exports, require, module){
+// Generated by CoffeeScript 1.4.0
+(function() {
+  var ClientNamespace, client, getId,
+    _this = this,
+    __slice = [].slice;
+
+  getId = function() {
+    var rand;
+    rand = function() {
+      return (((1 + Math.random()) * 0x10000000) | 0).toString(16);
+    };
+    return rand() + rand() + rand();
+  };
+
+  ClientNamespace = (function() {
+
+    function ClientNamespace(_socket, _name) {
+      this._socket = _socket;
+      this._name = _name;
+      this._services = [];
+      this._callbacks = {};
+    }
+
+    ClientNamespace.prototype.add = function(svcs) {
+      var service, _i, _len;
+      for (_i = 0, _len = svcs.length; _i < _len; _i++) {
+        service = svcs[_i];
+        this._services = svcs;
+        this[service] = this._getSender(service);
+      }
+      return this;
+    };
+
+    ClientNamespace.prototype._getSender = function(service) {
+      var _this = this;
+      return function() {
+        var args, cb, id, _i;
+        args = 2 <= arguments.length ? __slice.call(arguments, 0, _i = arguments.length - 1) : (_i = 0, []), cb = arguments[_i++];
+        id = getId();
+        if (typeof cb === 'function') {
+          _this._callbacks[id] = cb;
+        } else {
+          args.push(cb);
+        }
+        return _this._socket.write({
+          type: 'request',
+          id: id,
+          ns: _this._name,
+          service: service,
+          args: args
+        });
+      };
+    };
+
+    return ClientNamespace;
+
+  })();
+
+  client = {
+    options: {
+      namespace: 'Vein',
+      resource: 'default'
+    },
+    start: function() {
+      return this.namespaces = {};
+    },
+    ready: function(fn) {
+      if (this.synced) {
+        return fn(this.ns('main')._services, this.namespaces);
+      }
+      return this.once('ready', fn);
+    },
+    ns: function(name) {
+      return this.namespaces[name];
+    },
+    validate: function(socket, msg, done) {
+      if (typeof msg !== 'object') {
+        return done(false);
+      }
+      if (typeof msg.type !== 'string') {
+        return done(false);
+      }
+      if (msg.type === 'response') {
+        if (typeof msg.id !== 'string') {
+          return done(false);
+        }
+        if (typeof msg.ns !== 'string') {
+          return done(false);
+        }
+        if (this.ns(msg.ns) == null) {
+          return done(false);
+        }
+        if (typeof msg.service !== 'string') {
+          return done(false);
+        }
+        if (typeof this.ns(msg.ns)._callbacks[msg.id] !== 'function') {
+          return done(false);
+        }
+        if (!Array.isArray(msg.args)) {
+          return done(false);
+        }
+      } else if (msg.type === 'services') {
+        if (typeof msg.args !== 'object') {
+          return done(false);
+        }
+      } else {
+        return done(false);
+      }
+      return done(true);
+    },
+    error: function(socket, err) {
+      return this.emit('error', err, socket);
+    },
+    message: function(socket, msg) {
+      var k, v, _i, _len, _ref, _ref1, _ref2;
+      if (msg.type === 'response') {
+        (_ref = this.ns(msg.ns)._callbacks)[msg.id].apply(_ref, msg.args);
+        return delete this.ns(msg.ns)._callbacks[msg.id];
+      } else if (msg.type === 'services') {
+        _ref1 = msg.args;
+        for (k in _ref1) {
+          v = _ref1[k];
+          if (this.namespaces[k]) {
+            this.namespaces[k].add(v);
+          } else {
+            this.namespaces[k] = new ClientNamespace(socket, k);
+            this.namespaces[k].add(v);
+          }
+        }
+        _ref2 = msg.args.main;
+        for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
+          k = _ref2[_i];
+          this[k] = this.ns('main')[k];
+        }
+        this.synced = true;
+        return this.emit('ready', this.ns('main')._services, this.namespaces);
+      }
+    }
+  };
+
+  module.exports = client;
+
+}).call(this);
+
+});
+require.register("wearefractal-vein/dist/Namespace.js", function(exports, require, module){
+// Generated by CoffeeScript 1.4.0
+(function() {
+  var Namespace, async, basename, extname, join, readdirSync, _ref;
+
+  readdirSync = require('fs').readdirSync;
+
+  _ref = require('path'), join = _ref.join, basename = _ref.basename, extname = _ref.extname;
+
+  async = require('async');
+
+  Namespace = (function() {
+
+    function Namespace(_name) {
+      this._name = _name;
+      this._services = {};
+      this._stack = [];
+    }
+
+    Namespace.prototype.add = function(name, fn) {
+      this._services[name] = fn;
+      return this;
+    };
+
+    Namespace.prototype.remove = function(name) {
+      delete this._services[name];
+      return this;
+    };
+
+    Namespace.prototype.addFolder = function(folder) {
+      var ext, file, service, serviceName, _i, _len, _ref1;
+      _ref1 = readdirSync(folder);
+      for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+        file = _ref1[_i];
+        ext = extname(file);
+        serviceName = basename(file, ext);
+        if (require.extensions[ext] != null) {
+          service = require(join(folder, file));
+          this.add(serviceName, service);
+        }
+      }
+      return this;
+    };
+
+    Namespace.prototype.use = function(fn) {
+      this._stack.push(fn);
+      return this;
+    };
+
+    Namespace.prototype._middle = function(msg, res, cb) {
+      var run,
+        _this = this;
+      if (this._stack.length === 0) {
+        return cb();
+      }
+      run = function(middle, done) {
+        return middle(msg, res, done);
+      };
+      async.forEachSeries(this._stack, run, cb);
+    };
+
+    return Namespace;
+
+  })();
+
+  module.exports = Namespace;
+
+}).call(this);
+
+});
 require.register("component-emitter/index.js", function(exports, require, module){
 
 /**
@@ -3215,14 +3435,6 @@ Emitter.prototype.off =
 Emitter.prototype.removeListener =
 Emitter.prototype.removeAllListeners = function(event, fn){
   this._callbacks = this._callbacks || {};
-
-  // all
-  if (0 == arguments.length) {
-    this._callbacks = {};
-    return this;
-  }
-
-  // specific event
   var callbacks = this._callbacks[event];
   if (!callbacks) return this;
 
@@ -3287,152 +3499,800 @@ Emitter.prototype.hasListeners = function(event){
 };
 
 });
+require.register("component-inherit/index.js", function(exports, require, module){
+
+module.exports = function(a, b){
+  var fn = function(){};
+  fn.prototype = b.prototype;
+  a.prototype = new fn;
+  a.prototype.constructor = a;
+};
+});
+require.register("adamsanderson-trigger-event/index.js", function(exports, require, module){
+var inherit = require('inherit');
+module.exports = trigger;
+
+/** 
+  Event type mappings.
+  This is not an exhaustive list, feel free to fork and contribute more.
+  Namely keyboard events are not currently supported.
+*/
+var eventTypes = {
+  load:        'HTMLEvents', 
+  unload:      'HTMLEvents', 
+  abort:       'HTMLEvents', 
+  error:       'HTMLEvents', 
+  select:      'HTMLEvents', 
+  change:      'HTMLEvents', 
+  submit:      'HTMLEvents', 
+  reset:       'HTMLEvents', 
+  focus:       'HTMLEvents', 
+  blur:        'HTMLEvents', 
+  resize:      'HTMLEvents', 
+  scroll:      'HTMLEvents', 
+  input:       'HTMLEvents', 
+  
+  click:       'MouseEvents',
+  dblclick:    'MouseEvents', 
+  mousedown:   'MouseEvents', 
+  mouseup:     'MouseEvents', 
+  mouseover:   'MouseEvents', 
+  mousemove:   'MouseEvents', 
+  mouseout:    'MouseEvents',
+  contextmenu: 'MouseEvents'
+};
+
+// Default event properties:
+var defaults = {
+  clientX: 0,
+  clientY: 0,
+  button: 0,
+  ctrlKey: false,
+  altKey: false,
+  shiftKey: false,
+  metaKey: false,
+  bubbles: true,
+  cancelable: true
+};
+
+/**
+ * Trigger a DOM event.
+ * 
+ *    trigger(document.body, "click", {clientX: 10, clientY: 35});
+ *
+ * Where sensible, sane defaults will be filled in.  See the list of event
+ * types for supported events.
+ *
+ * Loosely based on:
+ * https://github.com/kangax/protolicious/blob/master/event.simulate.js
+ */
+function trigger(el, name, options){
+  var event, type;
+  
+  type = eventTypes[name];
+  if (!type) {
+    throw new SyntaxError('Unknown event type: '+type);
+  }
+  
+  options = options || {};
+  inherit(defaults, options);
+  
+  if (document.createEvent) {
+    // Standard Event
+    event = document.createEvent(type);
+    initializers[type](el, name, event, options);
+    el.dispatchEvent(event);
+  } else {
+    // IE Event
+    event = document.createEventObject();
+    for (var key in options){
+      event[key] = options[key];
+    }
+    el.fireEvent('on' + name, event);
+  }
+}
+
+var initializers = {
+  HTMLEvents: function(el, name, event, o){
+    return event.initEvent(name, o.bubbles, o.cancelable);
+  },
+  MouseEvents: function(el, name, event, o){
+    var screenX = ('screenX' in o) ? o.screenX : o.clientX;
+    var screenY = ('screenY' in o) ? o.screenY : o.clientY;
+    var clicks;
+    var button;
+    
+    if ('detail' in o) {
+      clicks = o.detail;
+    } else if (name === 'dblclick') {
+      clicks = 2;
+    } else {
+      clicks = 1;
+    }
+    
+    // Default context menu to be a right click
+    if (name === 'contextmenu') {
+      button = button = o.button || 2;
+    }
+    
+    return event.initMouseEvent(name, o.bubbles, o.cancelable, document.defaultView, 
+          clicks, screenX, screenY, o.clientX, o.clientY,
+          o.ctrlKey, o.altKey, o.shiftKey, o.metaKey, button, el);
+  }
+};
+
+});
+require.register("Contra-whammy/whammy.js", function(exports, require, module){
+/*
+	var vid = new Whammy.Video();
+	vid.add(canvas or data url)
+	vid.compile()
+*/
+module.exports = (function () {
+  // in this case, frames has a very specific meaning, which will be 
+  // detailed once i finish writing the code
+
+  function toWebM(frames, outputAsArray) {
+    var info = checkFrames(frames);
+
+    //max duration by cluster in milliseconds
+    var CLUSTER_MAX_DURATION = 30000;
+
+    var EBML = [{
+        "id": 0x1a45dfa3, // EBML
+        "data": [{
+            "data": 1,
+            "id": 0x4286 // EBMLVersion
+          }, {
+            "data": 1,
+            "id": 0x42f7 // EBMLReadVersion
+          }, {
+            "data": 4,
+            "id": 0x42f2 // EBMLMaxIDLength
+          }, {
+            "data": 8,
+            "id": 0x42f3 // EBMLMaxSizeLength
+          }, {
+            "data": "webm",
+            "id": 0x4282 // DocType
+          }, {
+            "data": 2,
+            "id": 0x4287 // DocTypeVersion
+          }, {
+            "data": 2,
+            "id": 0x4285 // DocTypeReadVersion
+          }
+        ]
+      }, {
+        "id": 0x18538067, // Segment
+        "data": [{
+            "id": 0x1549a966, // Info
+            "data": [{
+                "data": 1e6, //do things in millisecs (num of nanosecs for duration scale)
+                "id": 0x2ad7b1 // TimecodeScale
+              }, {
+                "data": "whammy",
+                "id": 0x4d80 // MuxingApp
+              }, {
+                "data": "whammy",
+                "id": 0x5741 // WritingApp
+              }, {
+                "data": doubleToString(info.duration),
+                "id": 0x4489 // Duration
+              }
+            ]
+          }, {
+            "id": 0x1654ae6b, // Tracks
+            "data": [{
+                "id": 0xae, // TrackEntry
+                "data": [{
+                    "data": 1,
+                    "id": 0xd7 // TrackNumber
+                  }, {
+                    "data": 1,
+                    "id": 0x63c5 // TrackUID
+                  }, {
+                    "data": 0,
+                    "id": 0x9c // FlagLacing
+                  }, {
+                    "data": "und",
+                    "id": 0x22b59c // Language
+                  }, {
+                    "data": "V_VP8",
+                    "id": 0x86 // CodecID
+                  }, {
+                    "data": "VP8",
+                    "id": 0x258688 // CodecName
+                  }, {
+                    "data": 1,
+                    "id": 0x83 // TrackType
+                  }, {
+                    "id": 0xe0, // Video
+                    "data": [{
+                        "data": info.width,
+                        "id": 0xb0 // PixelWidth
+                      }, {
+                        "data": info.height,
+                        "id": 0xba // PixelHeight
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+
+          //cluster insertion point
+        ]
+      }
+    ];
+
+
+    //Generate clusters (max duration)
+    var frameNumber = 0;
+    var clusterTimecode = 0;
+    while (frameNumber < frames.length) {
+
+      var clusterFrames = [];
+      var clusterDuration = 0;
+      do {
+        clusterFrames.push(frames[frameNumber]);
+        clusterDuration += frames[frameNumber].duration;
+        frameNumber++;
+      } while (frameNumber < frames.length && clusterDuration < CLUSTER_MAX_DURATION);
+
+      var clusterCounter = 0;
+      var cluster = {
+        "id": 0x1f43b675, // Cluster
+        "data": [{
+            "data": clusterTimecode,
+            "id": 0xe7 // Timecode
+          }
+        ].concat(clusterFrames.map(function (webp) {
+          var block = makeSimpleBlock({
+            discardable: 0,
+            frame: webp.data.slice(4),
+            invisible: 0,
+            keyframe: 1,
+            lacing: 0,
+            trackNum: 1,
+            timecode: Math.round(clusterCounter)
+          });
+          clusterCounter += webp.duration;
+          return {
+            data: block,
+            id: 0xa3
+          };
+        }))
+      }
+
+      //Add cluster to segment
+      EBML[1].data.push(cluster);
+      clusterTimecode += clusterDuration;
+    }
+
+    return generateEBML(EBML, outputAsArray)
+  }
+
+  // sums the lengths of all the frames and gets the duration, woo
+
+  function checkFrames(frames) {
+    var width = frames[0].width,
+      height = frames[0].height,
+      duration = frames[0].duration;
+    for (var i = 1; i < frames.length; i++) {
+      if (frames[i].width != width) throw "Frame " + (i + 1) + " has a different width";
+      if (frames[i].height != height) throw "Frame " + (i + 1) + " has a different height";
+      if (frames[i].duration < 0 || frames[i].duration > 0x7fff) throw "Frame " + (i + 1) + " has a weird duration (must be between 0 and 32767)";
+      duration += frames[i].duration;
+    }
+    return {
+      duration: duration,
+      width: width,
+      height: height
+    };
+  }
+
+
+  function numToBuffer(num) {
+    var parts = [];
+    while (num > 0) {
+      parts.push(num & 0xff)
+      num = num >> 8
+    }
+    return new Uint8Array(parts.reverse());
+  }
+
+  function strToBuffer(str) {
+    // return new Blob([str]);
+
+    var arr = new Uint8Array(str.length);
+    for (var i = 0; i < str.length; i++) {
+      arr[i] = str.charCodeAt(i)
+    }
+    return arr;
+    // this is slower
+    // return new Uint8Array(str.split('').map(function(e){
+    // 	return e.charCodeAt(0)
+    // }))
+  }
+
+
+  //sorry this is ugly, and sort of hard to understand exactly why this was done
+  // at all really, but the reason is that there's some code below that i dont really
+  // feel like understanding, and this is easier than using my brain.
+
+  function bitsToBuffer(bits) {
+    var data = [];
+    var pad = (bits.length % 8) ? (new Array(1 + 8 - (bits.length % 8))).join('0') : '';
+    bits = pad + bits;
+    for (var i = 0; i < bits.length; i += 8) {
+      data.push(parseInt(bits.substr(i, 8), 2))
+    }
+    return new Uint8Array(data);
+  }
+
+  function generateEBML(json, outputAsArray) {
+    var ebml = [];
+    for (var i = 0; i < json.length; i++) {
+      var data = json[i].data;
+      if (typeof data == 'object') data = generateEBML(data, outputAsArray);
+      if (typeof data == 'number') data = bitsToBuffer(data.toString(2));
+      if (typeof data == 'string') data = strToBuffer(data);
+
+      if (data.length) {
+        var z = z;
+      }
+
+      var len = data.size || data.byteLength || data.length;
+      var zeroes = Math.ceil(Math.ceil(Math.log(len) / Math.log(2)) / 8);
+      var size_str = len.toString(2);
+      var padded = (new Array((zeroes * 7 + 7 + 1) - size_str.length)).join('0') + size_str;
+      var size = (new Array(zeroes)).join('0') + '1' + padded;
+
+      //i actually dont quite understand what went on up there, so I'm not really
+      //going to fix this, i'm probably just going to write some hacky thing which
+      //converts that string into a buffer-esque thing
+
+      ebml.push(numToBuffer(json[i].id));
+      ebml.push(bitsToBuffer(size));
+      ebml.push(data)
+
+
+    }
+
+    //output as blob or byteArray
+    if (outputAsArray) {
+      //convert ebml to an array
+      var buffer = toFlatArray(ebml)
+      return new Uint8Array(buffer);
+    } else {
+      return new Blob(ebml, {
+        type: "video/webm"
+      });
+    }
+  }
+
+  function toFlatArray(arr, outBuffer) {
+    if (outBuffer == null) {
+      outBuffer = [];
+    }
+    for (var i = 0; i < arr.length; i++) {
+      if (typeof arr[i] == 'object') {
+        //an array
+        toFlatArray(arr[i], outBuffer)
+      } else {
+        //a simple element
+        outBuffer.push(arr[i]);
+      }
+    }
+    return outBuffer;
+  }
+
+  //OKAY, so the following two functions are the string-based old stuff, the reason they're
+  //still sort of in here, is that they're actually faster than the new blob stuff because
+  //getAsFile isn't widely implemented, or at least, it doesn't work in chrome, which is the
+  // only browser which supports get as webp
+
+  //Converting between a string of 0010101001's and binary back and forth is probably inefficient
+  //TODO: get rid of this function
+
+  function toBinStr_old(bits) {
+    var data = '';
+    var pad = (bits.length % 8) ? (new Array(1 + 8 - (bits.length % 8))).join('0') : '';
+    bits = pad + bits;
+    for (var i = 0; i < bits.length; i += 8) {
+      data += String.fromCharCode(parseInt(bits.substr(i, 8), 2))
+    }
+    return data;
+  }
+
+  function generateEBML_old(json) {
+    var ebml = '';
+    for (var i = 0; i < json.length; i++) {
+      var data = json[i].data;
+      if (typeof data == 'object') data = generateEBML_old(data);
+      if (typeof data == 'number') data = toBinStr_old(data.toString(2));
+
+      var len = data.length;
+      var zeroes = Math.ceil(Math.ceil(Math.log(len) / Math.log(2)) / 8);
+      var size_str = len.toString(2);
+      var padded = (new Array((zeroes * 7 + 7 + 1) - size_str.length)).join('0') + size_str;
+      var size = (new Array(zeroes)).join('0') + '1' + padded;
+
+      ebml += toBinStr_old(json[i].id.toString(2)) + toBinStr_old(size) + data;
+
+    }
+    return ebml;
+  }
+
+  //woot, a function that's actually written for this project!
+  //this parses some json markup and makes it into that binary magic
+  //which can then get shoved into the matroska comtainer (peaceably)
+
+  function makeSimpleBlock(data) {
+    var flags = 0;
+    if (data.keyframe) flags |= 128;
+    if (data.invisible) flags |= 8;
+    if (data.lacing) flags |= (data.lacing << 1);
+    if (data.discardable) flags |= 1;
+    if (data.trackNum > 127) {
+      throw "TrackNumber > 127 not supported";
+    }
+    var out = [data.trackNum | 0x80, data.timecode >> 8, data.timecode & 0xff, flags].map(function (e) {
+      return String.fromCharCode(e)
+    }).join('') + data.frame;
+
+    return out;
+  }
+
+  // here's something else taken verbatim from weppy, awesome rite?
+
+  function parseWebP(riff) {
+    var VP8 = riff.RIFF[0].WEBP[0];
+
+    var frame_start = VP8.indexOf('\x9d\x01\x2a'); //A VP8 keyframe starts with the 0x9d012a header
+    for (var i = 0, c = []; i < 4; i++) c[i] = VP8.charCodeAt(frame_start + 3 + i);
+
+    var width, horizontal_scale, height, vertical_scale, tmp;
+
+    //the code below is literally copied verbatim from the bitstream spec
+    tmp = (c[1] << 8) | c[0];
+    width = tmp & 0x3FFF;
+    horizontal_scale = tmp >> 14;
+    tmp = (c[3] << 8) | c[2];
+    height = tmp & 0x3FFF;
+    vertical_scale = tmp >> 14;
+    return {
+      width: width,
+      height: height,
+      data: VP8,
+      riff: riff
+    }
+  }
+
+  // i think i'm going off on a riff by pretending this is some known
+  // idiom which i'm making a casual and brilliant pun about, but since
+  // i can't find anything on google which conforms to this idiomatic
+  // usage, I'm assuming this is just a consequence of some psychotic
+  // break which makes me make up puns. well, enough riff-raff (aha a
+  // rescue of sorts), this function was ripped wholesale from weppy
+
+  function parseRIFF(string) {
+    var offset = 0;
+    var chunks = {};
+
+    while (offset < string.length) {
+      var id = string.substr(offset, 4);
+      var len = parseInt(string.substr(offset + 4, 4).split('').map(function (i) {
+        var unpadded = i.charCodeAt(0).toString(2);
+        return (new Array(8 - unpadded.length + 1)).join('0') + unpadded
+      }).join(''), 2);
+      var data = string.substr(offset + 4 + 4, len);
+      offset += 4 + 4 + len;
+      chunks[id] = chunks[id] || [];
+
+      if (id == 'RIFF' || id == 'LIST') {
+        chunks[id].push(parseRIFF(data));
+      } else {
+        chunks[id].push(data);
+      }
+    }
+    return chunks;
+  }
+
+  // here's a little utility function that acts as a utility for other functions
+  // basically, the only purpose is for encoding "Duration", which is encoded as
+  // a double (considerably more difficult to encode than an integer)
+
+  function doubleToString(num) {
+    return [].slice.call(
+    new Uint8Array(
+    (
+    new Float64Array([num]) //create a float64 array
+    ).buffer) //extract the array buffer
+    , 0) // convert the Uint8Array into a regular array
+    .map(function (e) { //since it's a regular array, we can now use map
+      return String.fromCharCode(e) // encode all the bytes individually
+    })
+      .reverse() //correct the byte endianness (assume it's little endian for now)
+    .join('') // join the bytes in holy matrimony as a string
+  }
+
+  function WhammyVideo(speed, quality) { // a more abstract-ish API
+    this.frames = [];
+    this.duration = 1000 / speed;
+    this.quality = quality || 0.8;
+  }
+
+  WhammyVideo.prototype.add = function (frame, duration) {
+    if (typeof duration != 'undefined' && this.duration) throw "you can't pass a duration if the fps is set";
+    if (typeof duration == 'undefined' && !this.duration) throw "if you don't have the fps set, you ned to have durations here."
+    if ('canvas' in frame) { //CanvasRenderingContext2D
+      frame = frame.canvas;
+    }
+    if ('toDataURL' in frame) {
+      frame = frame.toDataURL('image/webp', this.quality)
+    } else if (typeof frame != "string") {
+      throw "frame must be a a HTMLCanvasElement, a CanvasRenderingContext2D or a DataURI formatted string"
+    }
+    if (!(/^data:image\/webp;base64,/ig).test(frame)) {
+      throw "Input must be formatted properly as a base64 encoded DataURI of type image/webp";
+    }
+    this.frames.push({
+      image: frame,
+      duration: duration || this.duration
+    })
+  }
+
+  WhammyVideo.prototype.compile = function (outputAsArray) {
+    return new toWebM(this.frames.map(function (frame) {
+      var webp = parseWebP(parseRIFF(atob(frame.image.slice(23))));
+      webp.duration = frame.duration;
+      return webp;
+    }), outputAsArray)
+  }
+
+  return {
+    Video: WhammyVideo,
+    fromImageArray: function (images, fps, outputAsArray) {
+      return toWebM(images.map(function (image) {
+        var webp = parseWebP(parseRIFF(atob(image.slice(23))))
+        webp.duration = 1000 / fps;
+        return webp;
+      }), outputAsArray)
+    },
+    toWebM: toWebM
+    // expose methods of madness
+  }
+})()
+
+});
+require.register("wearefractal-recorder/dist/main.js", function(exports, require, module){
+// Generated by CoffeeScript 1.6.2
+var Emitter, Recorder, Whammy, blobToUri, saveURL, trigger, wrapper,
+  __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
+  __hasProp = {}.hasOwnProperty,
+  __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
+
+Emitter = require('emitter');
+
+trigger = require('trigger-event');
+
+Whammy = require('whammy');
+
+saveURL = function(file, uri) {
+  var link;
+
+  link = document.createElement("a");
+  link.href = uri;
+  link.target = "_blank";
+  link.download = file;
+  trigger(link, "click");
+};
+
+blobToUri = function(blob, cb) {
+  var reader;
+
+  reader = new FileReader;
+  reader.readAsDataURL(blob);
+  return reader.onload = function(event) {
+    return cb(event.target.result);
+  };
+};
+
+Recorder = (function(_super) {
+  __extends(Recorder, _super);
+
+  function Recorder(el, fps) {
+    this.fps = fps != null ? fps : 32;
+    this.clear = __bind(this.clear, this);
+    this.toBlob = __bind(this.toBlob, this);
+    this.toDataURL = __bind(this.toDataURL, this);
+    this.stop = __bind(this.stop, this);
+    this.save = __bind(this.save, this);
+    this.start = __bind(this.start, this);
+    this.grab = __bind(this.grab, this);
+    if (el.jquery) {
+      this.height = el.height();
+      this.width = el.width();
+      this.el = el[0];
+    } else {
+      this.height = el.clientHeight;
+      this.width = el.clientWidth;
+      this.el = el;
+    }
+    this.canvas = document.createElement('canvas');
+    this.context = this.canvas.getContext('2d');
+    this.canvas.height = this.height;
+    this.canvas.width = this.width;
+    this.interval = 1000 / this.fps;
+    this.frames = [];
+    this._requested = null;
+    this.delta = null;
+    this.then = Date.now();
+    this.now = null;
+  }
+
+  Recorder.prototype.grab = function() {
+    var uri;
+
+    this._requested = requestAnimationFrame(this.grab);
+    this.now = Date.now();
+    this.delta = this.now - this.then;
+    if (this.delta > this.interval) {
+      this.then = this.now - (this.delta % this.interval);
+      this.context.drawImage(this.el, 0, 0, this.width, this.height);
+      uri = this.canvas.toDataURL('image/webp', 1);
+      this.frames.push(uri);
+      this.emit("frame", uri);
+    }
+    return this;
+  };
+
+  Recorder.prototype.start = function() {
+    this.grab();
+    return this;
+  };
+
+  Recorder.prototype.save = function(fileName) {
+    if (fileName == null) {
+      fileName = "recording.webm";
+    }
+    this.toDataURL(function(err, uri) {
+      return saveURL(fileName, uri);
+    });
+    return this;
+  };
+
+  Recorder.prototype.stop = function() {
+    cancelAnimationFrame(this._requested);
+    return this;
+  };
+
+  Recorder.prototype.toDataURL = function(cb) {
+    return this.toBlob(function(err, blob) {
+      if (err != null) {
+        return cb(err);
+      }
+      return blobToUri(blob, function(uri) {
+        return cb(null, uri);
+      });
+    });
+  };
+
+  Recorder.prototype.toBlob = function(cb) {
+    var blob;
+
+    blob = Whammy.fromImageArray(this.frames, this.fps);
+    return cb(null, blob);
+  };
+
+  Recorder.prototype.clear = function() {
+    this.frames = [];
+    return this;
+  };
+
+  return Recorder;
+
+})(Emitter);
+
+wrapper = function(el) {
+  return new Recorder(el);
+};
+
+wrapper.Recorder = Recorder;
+
+module.exports = wrapper;
+
+});
 require.register("holla/dist/holla.js", function(exports, require, module){
-// Generated by CoffeeScript 1.6.1
+// Generated by CoffeeScript 1.6.2
 (function() {
-  var Call, ProtoSock, client, holla, shims;
+  var Call, Client, Emitter, Vein, holla, recorder, shims,
+    __hasProp = {}.hasOwnProperty,
+    __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
   Call = require('./Call');
 
   shims = require('./shims');
 
-  ProtoSock = require('protosock');
+  Vein = require('vein');
 
-  client = {
-    options: {
-      namespace: 'holla',
-      resource: 'default',
-      debug: false
-    },
-    register: function(name, cb) {
+  recorder = require('recorder');
+
+  Emitter = require('emitter');
+
+  Client = (function(_super) {
+    __extends(Client, _super);
+
+    function Client(options) {
+      var _base, _base1, _base2, _ref, _ref1, _ref2,
+        _this = this;
+
+      this.options = options != null ? options : {};
+      if ((_ref = (_base = this.options).namespace) == null) {
+        _base.namespace = "holla";
+      }
+      if ((_ref1 = (_base1 = this.options).debug) == null) {
+        _base1.debug = false;
+      }
+      if ((_ref2 = (_base2 = this.options).presence) == null) {
+        _base2.presence = true;
+      }
+      this.vein = Vein.createClient(this.options);
+      this.vein.ready(function(services) {
+        return console.log(services);
+      });
+      this.vein.on("invalid", function(socket, msg) {
+        return _this.handleMessage(socket, msg);
+      });
+    }
+
+    Client.prototype.register = function(name, cb) {
       var _this = this;
-      this.ssocket.write({
-        type: "register",
-        args: {
-          name: name
-        }
+
+      return this.vein.ready(function() {
+        return _this.vein.register(name, function(err) {
+          if (err != null) {
+            return cb(err);
+          }
+          _this.registered = true;
+          _this.emit("registered");
+          return cb();
+        });
       });
-      return this.once("register", function(worked) {
-        if (worked) {
-          _this.user = name;
-          _this.emit("authorized");
-        }
-        _this.authorized = worked;
-        return typeof cb === "function" ? cb(worked) : void 0;
-      });
-    },
-    call: function(user) {
+    };
+
+    Client.prototype.call = function(user) {
       return new Call(this, user, true);
-    },
-    chat: function(user, msg) {
-      this.ssocket.write({
-        type: "chat",
-        to: user,
-        args: {
-          message: msg
-        }
+    };
+
+    Client.prototype.chat = function(user, msg) {
+      var _this = this;
+
+      this.vein.ready(function() {
+        return _this.vein.chat(user, msg);
       });
       return this;
-    },
-    ready: function(fn) {
-      if (this.authorized) {
+    };
+
+    Client.prototype.ready = function(fn) {
+      if (this.registered) {
         fn();
       } else {
-        this.once('authorized', fn);
+        this.once('registered', fn);
       }
       return this;
-    },
-    validate: function(socket, msg, done) {
+    };
+
+    Client.prototype.handleMessage = function(socket, msg) {
+      var c;
+
       if (this.options.debug) {
         console.log(msg);
       }
-      if (typeof msg !== 'object') {
-        return done(false);
-      }
-      if (typeof msg.type !== 'string') {
-        return done(false);
-      }
-      if (msg.type === "register") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.args.result !== 'boolean') {
-          return done(false);
-        }
-      } else if (msg.type === "offer") {
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-      } else if (msg.type === "answer") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-        if (typeof msg.args.accepted !== 'boolean') {
-          return done(false);
-        }
-      } else if (msg.type === "sdp") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-        if (!msg.args.sdp) {
-          return done(false);
-        }
-        if (!msg.args.type) {
-          return done(false);
-        }
-      } else if (msg.type === "candidate") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-        if (typeof msg.args.candidate !== 'object') {
-          return done(false);
-        }
-      } else if (msg.type === "chat") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-        if (typeof msg.args.message !== 'string') {
-          return done(false);
-        }
-      } else if (msg.type === "hangup") {
-        if (typeof msg.from !== 'string') {
-          return done(false);
-        }
-      } else if (msg.type === "presence") {
-        if (typeof msg.args !== 'object') {
-          return done(false);
-        }
-        if (typeof msg.args.name !== 'string') {
-          return done(false);
-        }
-        if (typeof msg.args.online !== 'boolean') {
-          return done(false);
-        }
-      } else {
-        return done(false);
-      }
-      return done(true);
-    },
-    error: function(socket, err) {
-      return this.emit('error', err, socket);
-    },
-    message: function(socket, msg) {
-      var c;
       switch (msg.type) {
-        case "register":
-          return this.emit("register", msg.args.result);
         case "offer":
           c = new Call(this, msg.from, false);
           return this.emit("call", c);
@@ -3470,11 +4330,17 @@ require.register("holla/dist/holla.js", function(exports, require, module){
           });
           return this.emit("sdp." + msg.from, msg.args);
       }
-    }
-  };
+    };
+
+    return Client;
+
+  })(Emitter);
 
   holla = {
-    createClient: ProtoSock.createClientWrapper(client),
+    createClient: function(opt) {
+      return new Client(opt);
+    },
+    Client: Client,
     Call: Call,
     supported: shims.supported,
     config: shims.PeerConnConfig,
@@ -3483,12 +4349,14 @@ require.register("holla/dist/holla.js", function(exports, require, module){
     },
     pipe: function(stream, el) {
       var uri;
+
       uri = holla.streamToBlob(stream);
       return shims.attachStream(uri, el);
     },
-    record: shims.recordVideo,
+    record: recorder,
     createStream: function(opt, cb) {
       var err, succ;
+
       if (shims.getUserMedia == null) {
         return cb("Missing getUserMedia");
       }
@@ -3525,7 +4393,7 @@ require.register("holla/dist/holla.js", function(exports, require, module){
 
 });
 require.register("holla/dist/Call.js", function(exports, require, module){
-// Generated by CoffeeScript 1.6.1
+// Generated by CoffeeScript 1.6.2
 (function() {
   var Call, EventEmitter, shims,
     __hasProp = {}.hasOwnProperty,
@@ -3536,28 +4404,31 @@ require.register("holla/dist/Call.js", function(exports, require, module){
   EventEmitter = require('emitter');
 
   Call = (function(_super) {
-
     __extends(Call, _super);
 
     function Call(parent, user, isCaller) {
       var _this = this;
+
       this.parent = parent;
       this.user = user;
       this.isCaller = isCaller;
-      this.startTime = new Date;
-      this.socket = this.parent.ssocket;
       this.pc = this.createConnection();
+      this.vein = this.parent.vein;
       if (this.isCaller) {
-        this.socket.write({
-          type: "offer",
-          to: this.user
+        this.vein.ready(function() {
+          return _this.vein.offer(_this.user, function(err) {
+            if (err != null) {
+              return _this.emit('error', err);
+            }
+            return _this.emit("calling");
+          });
         });
       }
-      this.emit("calling");
       this.parent.on("answer." + this.user, function(accepted) {
         if (!accepted) {
           return _this.emit("rejected");
         }
+        _this.startTime = new Date;
         _this.emit("answered");
         return _this.initSDP();
       });
@@ -3566,6 +4437,7 @@ require.register("holla/dist/Call.js", function(exports, require, module){
       });
       this.parent.on("sdp." + this.user, function(desc) {
         var err, succ;
+
         desc.sdp = shims.processSDPIn(desc.sdp);
         err = function(e) {
           throw e;
@@ -3589,6 +4461,7 @@ require.register("holla/dist/Call.js", function(exports, require, module){
     Call.prototype.createConnection = function() {
       var pc,
         _this = this;
+
       pc = new shims.PeerConnection(shims.PeerConnConfig, shims.constraints);
       pc.onconnecting = function() {
         _this.emit('connecting');
@@ -3598,12 +4471,8 @@ require.register("holla/dist/Call.js", function(exports, require, module){
       };
       pc.onicecandidate = function(evt) {
         if (evt.candidate) {
-          _this.socket.write({
-            type: "candidate",
-            to: _this.user,
-            args: {
-              candidate: evt.candidate
-            }
+          _this.parent.vein.ready(function() {
+            return _this.parent.vein.candidate(_this.user, evt.candidate);
           });
         }
       };
@@ -3635,6 +4504,7 @@ require.register("holla/dist/Call.js", function(exports, require, module){
 
     Call.prototype.duration = function() {
       var e, s;
+
       if (this.endTime != null) {
         s = this.endTime.getTime();
       }
@@ -3651,36 +4521,33 @@ require.register("holla/dist/Call.js", function(exports, require, module){
     };
 
     Call.prototype.answer = function() {
+      var _this = this;
+
       this.startTime = new Date;
-      this.socket.write({
-        type: "answer",
-        to: this.user,
-        args: {
-          accepted: true
-        }
+      this.parent.vein.ready(function() {
+        return _this.parent.vein.answer(_this.user, true);
       });
       return this;
     };
 
     Call.prototype.decline = function() {
-      this.socket.write({
-        type: "answer",
-        to: this.user,
-        args: {
-          accepted: false
-        }
+      var _this = this;
+
+      this.parent.vein.ready(function() {
+        return _this.parent.vein.answer(_this.user, false);
       });
       return this;
     };
 
     Call.prototype.end = function() {
+      var _this = this;
+
       this.endTime = new Date;
       try {
         this.pc.close();
       } catch (_error) {}
-      this.socket.write({
-        type: "hangup",
-        to: this.user
+      this.parent.vein.ready(function() {
+        return _this.parent.vein.hangup(_this.user);
       });
       this.emit("hangup");
       return this;
@@ -3689,13 +4556,12 @@ require.register("holla/dist/Call.js", function(exports, require, module){
     Call.prototype.initSDP = function() {
       var done, err,
         _this = this;
+
       done = function(desc) {
         desc.sdp = shims.processSDPOut(desc.sdp);
         _this.pc.setLocalDescription(desc);
-        return _this.socket.write({
-          type: "sdp",
-          to: _this.user,
-          args: desc
+        return _this.parent.vein.ready(function() {
+          return _this.parent.vein.sdp(_this.user, desc);
         });
       };
       err = function(e) {
@@ -3722,9 +4588,9 @@ require.register("holla/dist/Call.js", function(exports, require, module){
 
 });
 require.register("holla/dist/shims.js", function(exports, require, module){
-// Generated by CoffeeScript 1.6.1
+// Generated by CoffeeScript 1.6.2
 (function() {
-  var IceCandidate, MediaStream, PeerConnection, SessionDescription, URL, attachStream, browser, extract, getUserMedia, loadBlob, processSDPIn, processSDPOut, recordVideo, removeCN, replaceCodec, saveBlob, shim, supported, useOPUS;
+  var IceCandidate, MediaStream, PeerConnection, SessionDescription, URL, attachStream, browser, extract, getUserMedia, processSDPIn, processSDPOut, removeCN, replaceCodec, shim, supported, useOPUS;
 
   PeerConnection = window.mozRTCPeerConnection || window.PeerConnection || window.webkitPeerConnection00 || window.webkitRTCPeerConnection;
 
@@ -3746,12 +4612,14 @@ require.register("holla/dist/shims.js", function(exports, require, module){
 
   extract = function(str, reg) {
     var match;
+
     match = str.match(reg);
     return (match != null ? match[1] : null);
   };
 
   replaceCodec = function(line, codec) {
     var el, els, idx, out, _i, _len;
+
     els = line.split(' ');
     out = [];
     for (idx = _i = 0, _len = els.length; _i < _len; idx = ++_i) {
@@ -3768,6 +4636,7 @@ require.register("holla/dist/shims.js", function(exports, require, module){
 
   removeCN = function(lines, mLineIdx) {
     var cnPos, idx, line, mLineEls, payload, _i, _len;
+
     mLineEls = lines[mLineIdx].split(' ');
     for (idx = _i = 0, _len = lines.length; _i < _len; idx = ++_i) {
       line = lines[idx];
@@ -3789,9 +4658,11 @@ require.register("holla/dist/shims.js", function(exports, require, module){
 
   useOPUS = function(sdp) {
     var idx, line, lines, mLineIdx, payload, _i, _len;
+
     lines = sdp.split('\r\n');
     mLineIdx = ((function() {
       var _i, _len, _results;
+
       _results = [];
       for (idx = _i = 0, _len = lines.length; _i < _len; idx = ++_i) {
         line = lines[idx];
@@ -3821,6 +4692,7 @@ require.register("holla/dist/shims.js", function(exports, require, module){
 
   processSDPOut = function(sdp) {
     var addCrypto, line, out, _i, _j, _len, _len1, _ref, _ref1;
+
     out = [];
     if (browser === 'firefox') {
       addCrypto = "a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:BAADBAADBAADBAADBAADBAADBAADBAADBAADBAAD";
@@ -3850,6 +4722,7 @@ require.register("holla/dist/shims.js", function(exports, require, module){
 
   attachStream = function(uri, el) {
     var e, _i, _len;
+
     if (typeof el === "string") {
       return attachStream(uri, document.getElementById(el));
     } else if (el.jquery) {
@@ -3865,78 +4738,9 @@ require.register("holla/dist/shims.js", function(exports, require, module){
     return el;
   };
 
-  saveBlob = function(file, blob) {
-    var evt, link;
-    link = document.createElement("a");
-    link.href = blob;
-    link.target = "_blank";
-    link.download = file;
-    evt = document.createEvent("Event");
-    evt.initEvent("click", true, true);
-    link.dispatchEvent(evt);
-    URL.revokeObjectURL(link.href);
-  };
-
-  loadBlob = function(blob, cb) {
-    var reader;
-    reader = new FileReader;
-    reader.readAsDataURL(blob);
-    return reader.onload = function(event) {
-      return cb(event.target.result);
-    };
-  };
-
-  recordVideo = function(el) {
-    var can, ctrl, ctx, end, frames, getBlob, grab, h, requested, save, w;
-    if (el.jquery) {
-      h = el.height();
-      w = el.width();
-      el = el[0];
-    } else {
-      h = el.height;
-      w = el.width;
-    }
-    can = document.createElement('canvas');
-    ctx = can.getContext('2d');
-    can.width = w;
-    can.height = h;
-    frames = [];
-    grab = function() {
-      var requested;
-      requested = requestAnimationFrame(grab);
-      ctx.drawImage(el, 0, 0, w, h);
-      frames.push(can.toDataURL('image/webp', 1));
-    };
-    getBlob = function(cb) {
-      var blob;
-      blob = Whammy.fromImageArray(frames, 1000 / 60);
-      loadBlob(blob, cb);
-      return ctrl;
-    };
-    save = function(file) {
-      if (file == null) {
-        file = "recording.webp";
-      }
-      getBlob(function(blob) {
-        return saveBlob(file, blob);
-      });
-      return ctrl;
-    };
-    end = function(cb) {
-      cancelAnimationFrame(requested);
-      return ctrl;
-    };
-    requested = requestAnimationFrame(grab);
-    ctrl = {
-      save: save,
-      getBlob: getBlob,
-      end: end
-    };
-    return ctrl;
-  };
-
   shim = function() {
     var PeerConnConfig, mediaConstraints, out;
+
     if (!supported) {
       return;
     }
@@ -4010,60 +4814,26 @@ require.register("holla/dist/shims.js", function(exports, require, module){
       PeerConnConfig: PeerConnConfig,
       browser: browser,
       supported: supported,
-      constraints: mediaConstraints,
-      recordVideo: recordVideo,
-      loadBlob: loadBlob,
-      saveBlob: saveBlob
+      constraints: mediaConstraints
     };
     return out;
   };
-
-  
-(function() {
-    var lastTime = 0;
-    var vendors = ['ms', 'moz', 'webkit', 'o'];
-    for(var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
-        window.requestAnimationFrame = window[vendors[x]+'RequestAnimationFrame'];
-        window.cancelAnimationFrame =
-          window[vendors[x]+'CancelAnimationFrame'] || window[vendors[x]+'CancelRequestAnimationFrame'];
-    }
-
-    if (!window.requestAnimationFrame)
-        window.requestAnimationFrame = function(callback, element) {
-            var currTime = new Date().getTime();
-            var timeToCall = Math.max(0, 16 - (currTime - lastTime));
-            var id = window.setTimeout(function() { callback(currTime + timeToCall); },
-              timeToCall);
-            lastTime = currTime + timeToCall;
-            return id;
-        };
-
-    if (!window.cancelAnimationFrame)
-        window.cancelAnimationFrame = function(id) {
-            clearTimeout(id);
-        };
-}());
-/* https://github.com/antimatter15/whammy */
-var Whammy=function(){function g(a){for(var b=a[0].width,e=a[0].height,c=a[0].duration,d=1;d<a.length;d++){if(a[d].width!=b)throw"Frame "+(d+1)+" has a different width";if(a[d].height!=e)throw"Frame "+(d+1)+" has a different height";if(0>a[d].duration)throw"Frame "+(d+1)+" has a weird duration";c+=a[d].duration}var f=0,a=[{id:440786851,data:[{data:1,id:17030},{data:1,id:17143},{data:4,id:17138},{data:8,id:17139},{data:"webm",id:17026},{data:2,id:17031},{data:2,id:17029}]},{id:408125543,data:[{id:357149030,
-data:[{data:1E6,id:2807729},{data:"whammy",id:19840},{data:"whammy",id:22337},{data:[].slice.call(new Uint8Array((new Float64Array([c])).buffer),0).map(function(a){return String.fromCharCode(a)}).reverse().join(""),id:17545}]},{id:374648427,data:[{id:174,data:[{data:1,id:215},{data:1,id:25541},{data:0,id:156},{data:"und",id:2274716},{data:"V_VP8",id:134},{data:"VP8",id:2459272},{data:1,id:131},{id:224,data:[{data:b,id:176},{data:e,id:186}]}]}]},{id:524531317,data:[{data:0,id:231}].concat(a.map(function(a){var b;
-b=a.data.slice(4);var c=Math.round(f);b=[129,c>>8,c&255,128].map(function(a){return String.fromCharCode(a)}).join("")+b;f+=a.duration;return{data:b,id:163}}))}]}];return j(a)}function m(a){for(var b=[];0<a;)b.push(a&255),a>>=8;return new Uint8Array(b.reverse())}function k(a){for(var b=[],a=(a.length%8?Array(9-a.length%8).join("0"):"")+a,e=0;e<a.length;e+=8)b.push(parseInt(a.substr(e,8),2));return new Uint8Array(b)}function j(a){for(var b=[],e=0;e<a.length;e++){var c=a[e].data;"object"==typeof c&&
-(c=j(c));"number"==typeof c&&(c=k(c.toString(2)));if("string"==typeof c){for(var d=new Uint8Array(c.length),f=0;f<c.length;f++)d[f]=c.charCodeAt(f);c=d}f=c.size||c.byteLength;d=Math.ceil(Math.ceil(Math.log(f)/Math.log(2))/8);f=f.toString(2);f=Array(7*d+8-f.length).join("0")+f;d=Array(d).join("0")+"1"+f;b.push(m(a[e].id));b.push(k(d));b.push(c)}return new Blob(b,{type:"video/webm"})}function l(a){for(var b=a.RIFF[0].WEBP[0],e=b.indexOf("\u009d\u0001*"),c=0,d=[];4>c;c++)d[c]=b.charCodeAt(e+3+c);c=d[1]<<
-8|d[0];e=c&16383;c=d[3]<<8|d[2];return{width:e,height:c&16383,data:b,riff:a}}function h(a){for(var b=0,e={};b<a.length;){var c=a.substr(b,4),d=parseInt(a.substr(b+4,4).split("").map(function(a){a=a.charCodeAt(0).toString(2);return Array(8-a.length+1).join("0")+a}).join(""),2),f=a.substr(b+4+4,d),b=b+(8+d);e[c]=e[c]||[];"RIFF"==c||"LIST"==c?e[c].push(h(f)):e[c].push(f)}return e}function i(a,b){this.frames=[];this.duration=1E3/a;this.quality=b||0.8}i.prototype.add=function(a,b){if("undefined"!=typeof b&&
-this.duration)throw"you can't pass a duration if the fps is set";if("undefined"==typeof b&&!this.duration)throw"if you don't have the fps set, you ned to have durations here.";a.canvas&&(a=a.canvas);if(a.toDataURL)a=a.toDataURL("image/webp",this.quality);else if("string"!=typeof a)throw"frame must be a a HTMLCanvasElement, a CanvasRenderingContext2D or a DataURI formatted string";if(!/^data:image\/webp;base64,/ig.test(a))throw"Input must be formatted properly as a base64 encoded DataURI of type image/webp";
-this.frames.push({image:a,duration:b||this.duration})};i.prototype.compile=function(){return new g(this.frames.map(function(a){var b=l(h(atob(a.image.slice(23))));b.duration=a.duration;return b}))};return{Video:i,fromImageArray:function(a,b){return g(a.map(function(a){a=l(h(atob(a.slice(23))));a.duration=1E3/b;return a}))},toWebM:g}}();
-;
 
   module.exports = shim();
 
 }).call(this);
 
 });
-require.alias("wearefractal-protosock/dist/main.js", "holla/deps/protosock/dist/main.js");
-require.alias("wearefractal-protosock/dist/Socket.js", "holla/deps/protosock/dist/Socket.js");
-require.alias("wearefractal-protosock/dist/util.js", "holla/deps/protosock/dist/util.js");
-require.alias("wearefractal-protosock/dist/defaultClient.js", "holla/deps/protosock/dist/defaultClient.js");
-require.alias("wearefractal-protosock/dist/Client.js", "holla/deps/protosock/dist/Client.js");
-require.alias("wearefractal-protosock/dist/main.js", "holla/deps/protosock/index.js");
+require.alias("wearefractal-vein/dist/main.js", "holla/deps/vein/dist/main.js");
+require.alias("wearefractal-vein/dist/Client.js", "holla/deps/vein/dist/Client.js");
+require.alias("wearefractal-vein/dist/Namespace.js", "holla/deps/vein/dist/Namespace.js");
+require.alias("wearefractal-vein/dist/main.js", "holla/deps/vein/index.js");
+require.alias("wearefractal-protosock/dist/main.js", "wearefractal-vein/deps/protosock/dist/main.js");
+require.alias("wearefractal-protosock/dist/Socket.js", "wearefractal-vein/deps/protosock/dist/Socket.js");
+require.alias("wearefractal-protosock/dist/util.js", "wearefractal-vein/deps/protosock/dist/util.js");
+require.alias("wearefractal-protosock/dist/defaultClient.js", "wearefractal-vein/deps/protosock/dist/defaultClient.js");
+require.alias("wearefractal-protosock/dist/Client.js", "wearefractal-vein/deps/protosock/dist/Client.js");
+require.alias("wearefractal-protosock/dist/main.js", "wearefractal-vein/deps/protosock/index.js");
 require.alias("component-emitter/index.js", "wearefractal-protosock/deps/emitter/index.js");
 
 require.alias("LearnBoost-engine.io-client/lib/index.js", "wearefractal-protosock/deps/engine.io/lib/index.js");
@@ -4092,7 +4862,22 @@ require.alias("LearnBoost-engine.io-client/lib/index.js", "LearnBoost-engine.io-
 
 require.alias("wearefractal-protosock/dist/main.js", "wearefractal-protosock/index.js");
 
+require.alias("wearefractal-vein/dist/main.js", "wearefractal-vein/index.js");
+
 require.alias("component-emitter/index.js", "holla/deps/emitter/index.js");
+
+require.alias("wearefractal-recorder/dist/main.js", "holla/deps/recorder/dist/main.js");
+require.alias("wearefractal-recorder/dist/main.js", "holla/deps/recorder/index.js");
+require.alias("component-emitter/index.js", "wearefractal-recorder/deps/emitter/index.js");
+
+require.alias("adamsanderson-trigger-event/index.js", "wearefractal-recorder/deps/trigger-event/index.js");
+require.alias("component-inherit/index.js", "adamsanderson-trigger-event/deps/inherit/index.js");
+
+require.alias("Contra-whammy/whammy.js", "wearefractal-recorder/deps/whammy/whammy.js");
+require.alias("Contra-whammy/whammy.js", "wearefractal-recorder/deps/whammy/index.js");
+require.alias("Contra-whammy/whammy.js", "Contra-whammy/index.js");
+
+require.alias("wearefractal-recorder/dist/main.js", "wearefractal-recorder/index.js");
 
 require.alias("holla/dist/holla.js", "holla/index.js");
 

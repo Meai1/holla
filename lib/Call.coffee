@@ -4,18 +4,18 @@ EventEmitter = require 'emitter'
 
 class Call extends EventEmitter
   constructor: (@parent, @user, @isCaller) ->
-    @startTime = new Date
-    @socket = @parent.ssocket
-
     @pc = @createConnection()
+    @vein = @parent.vein
+
     if @isCaller
-      @socket.write
-        type: "offer"
-        to: @user
-    @emit "calling"
+      @vein.ready =>
+        @vein.offer @user, (err) =>
+          return @emit 'error', err if err?
+          @emit "calling"
 
     @parent.on "answer.#{@user}", (accepted) =>
       return @emit "rejected" unless accepted
+      @startTime = new Date
       @emit "answered"
       @initSDP()
 
@@ -46,11 +46,8 @@ class Call extends EventEmitter
       return
     pc.onicecandidate = (evt) =>
       if evt.candidate
-        @socket.write
-          type: "candidate"
-          to: @user
-          args:
-            candidate: evt.candidate
+        @parent.vein.ready =>
+          @parent.vein.candidate @user, evt.candidate
       return
 
     pc.onaddstream = (evt) =>
@@ -88,28 +85,21 @@ class Call extends EventEmitter
 
   answer: ->
     @startTime = new Date
-    @socket.write
-      type: "answer"
-      to: @user
-      args:
-        accepted: true
+    @parent.vein.ready =>
+      @parent.vein.answer @user, true
     return @
 
   decline: ->
-    @socket.write
-      type: "answer"
-      to: @user
-      args:
-        accepted: false
+    @parent.vein.ready =>
+      @parent.vein.answer @user, false
     return @
 
   end: ->
     @endTime = new Date
     try
       @pc.close()
-    @socket.write
-      type: "hangup"
-      to: @user
+    @parent.vein.ready =>
+      @parent.vein.hangup @user
     @emit "hangup"
     return @
 
@@ -117,10 +107,8 @@ class Call extends EventEmitter
     done = (desc) =>
       desc.sdp = shims.processSDPOut desc.sdp
       @pc.setLocalDescription desc
-      @socket.write
-        type: "sdp"
-        to: @user
-        args: desc
+      @parent.vein.ready =>
+        @parent.vein.sdp @user, desc
 
     err = (e) -> throw e
 

@@ -22,8 +22,8 @@
    "dependencies": {
       "coffee-script": "*",
       "async": "*",
-      "protosock": "*",
-      "express": "*"
+      "express": "*",
+      "vein": "*"
    },
    "devDependencies": {
       "mocha": "*",

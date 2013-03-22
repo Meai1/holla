@@ -41,10 +41,15 @@ $(function(){
       holla.pipe(stream, $("#me"));
 
       // accept inbound
-      server.register(name, function(worked) {
+      server.register(name, function(err) {
+        if (err) throw err;
+        console.log("Logged in!");
+
         server.on("call", function(call) {
           console.log("Inbound call", call);
-
+          call.on('error', function(err){
+            throw err;
+          });
           call.addStream(stream);
           call.answer();
 
@@ -66,6 +71,9 @@ $(function(){
         $("#whoCall").change(function(){
           var toCall = $("#whoCall").val();
           var call = server.call(toCall);
+          call.on('error', function(err){
+            throw err;
+          });
           call.addStream(stream);
           call.ready(function(stream) {
             holla.pipe(stream, $("#them"));

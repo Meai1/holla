@@ -2,8 +2,9 @@
   "name": "holla",
   "version": "0.6.1",
   "dependencies": {
-    "wearefractal/protosock": "*",
-    "component/emitter": "*"
+    "wearefractal/vein": "*",
+    "component/emitter": "*",
+    "wearefractal/recorder": "*"
   },
   "main": "dist/holla.js",
   "scripts": [
